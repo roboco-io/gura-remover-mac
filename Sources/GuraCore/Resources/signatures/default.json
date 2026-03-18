@@ -1,0 +1,272 @@
+{
+  "generatedAt" : "2026-03-18T00:00:00Z",
+  "signatures" : [
+    {
+      "bundleIds" : [],
+      "confidence" : "high",
+      "id" : "raon.touchennxkey",
+      "launchdLabels" : [
+        "TEK_Daemon",
+        "TEK_UserAgent"
+      ],
+      "paths" : [
+        "/Applications/TouchEn nxKey.app",
+        "/Library/Application Support/TouchEn",
+        "~/Library/Application Support/TouchEn"
+      ],
+      "pkgReceipts" : [
+        "touchennxkey"
+      ],
+      "product" : "TouchEn nxKey",
+      "risk" : "medium",
+      "searchTerms" : [
+        "touchen",
+        "nxkey",
+        "tek_daemon",
+        "tek_useragent"
+      ],
+      "vendor" : "RaonSecure"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "high",
+      "id" : "ahnlab.astx",
+      "launchdLabels" : [
+        "com.astx.firewall.Agent",
+        "com.astx.firewall.Daemon",
+        "com.ahnlab.astxagent",
+        "com.ahnlab.astxd"
+      ],
+      "paths" : [
+        "/Applications/AhnLab/ASTx",
+        "/Library/Application Support/ahnlab",
+        "~/Library/Application Support/AhnLab/ASTx",
+        "/Library/LaunchAgents/com.ahnlab.astxagent.plist",
+        "/Library/LaunchDaemons/com.ahnlab.astxd.plist"
+      ],
+      "pkgReceipts" : [
+        "com.ahnlab.astxagent.pkg",
+        "com.ahnlab.astx.ahnlab.pkg",
+        "com.ahnlab.astxd.pkg"
+      ],
+      "product" : "AhnLab ASTx",
+      "risk" : "high",
+      "searchTerms" : [
+        "ahnlab",
+        "astx",
+        "astxagent",
+        "astxd",
+        "com.ahnlab.astxagent",
+        "com.ahnlab.astxd",
+        "com.astx.firewall.agent",
+        "com.astx.firewall.daemon"
+      ],
+      "vendor" : "AhnLab"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "high",
+      "id" : "inca.nprotectonlinesecurity",
+      "launchdLabels" : [
+        "com.nprotect.nosintgdmn"
+      ],
+      "paths" : [
+        "/Applications/nProtect/nProtect Online Security V1",
+        "/Library/LaunchDaemons/com.nprotect.nosintgdmn.plist"
+      ],
+      "pkgReceipts" : [
+        "com.nprotect.nprotectonlinesecurityv1"
+      ],
+      "product" : "nProtect Online Security V1",
+      "risk" : "high",
+      "searchTerms" : [
+        "nprotect online security",
+        "nprotect",
+        "nosintgdmn",
+        "nosmain",
+        "nosuiagt",
+        "nosuninst",
+        "nprotectfwconnect"
+      ],
+      "vendor" : "INCA Internet"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "high",
+      "id" : "wizvera.delfino",
+      "launchdLabels" : [
+        "com.wizvera.delfino"
+      ],
+      "paths" : [
+        "/Applications/Delfino",
+        "/Library/Application Support/wizvera/delfino",
+        "/Library/LaunchAgents/com.wizvera.delfino.plist"
+      ],
+      "pkgReceipts" : [
+        "com.wizvera.delfino",
+        "delfino"
+      ],
+      "product" : "Wizvera Delfino",
+      "risk" : "medium",
+      "searchTerms" : [
+        "delfino",
+        "com.wizvera.delfino"
+      ],
+      "vendor" : "WIZVERA"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "medium",
+      "id" : "wizvera.veraport",
+      "launchdLabels" : [
+        "VeraPort"
+      ],
+      "paths" : [
+        "/Library/Application Support/WIZVERA",
+        "~/Library/Application Support/WIZVERA"
+      ],
+      "pkgReceipts" : [
+        "veraport",
+        "vp20handler"
+      ],
+      "product" : "WizIN-VeraPort",
+      "risk" : "medium",
+      "searchTerms" : [
+        "veraport",
+        "vp20handler",
+        "com.wizvera.veraport"
+      ],
+      "vendor" : "WIZVERA"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "high",
+      "id" : "initech.crosswebex",
+      "launchdLabels" : [
+        "INISAFE",
+        "CrossWeb"
+      ],
+      "paths" : [
+        "/Library/Application Support/INITECH",
+        "~/Library/Application Support/INITECH"
+      ],
+      "pkgReceipts" : [
+        "crossweb",
+        "inisafe",
+        "initech"
+      ],
+      "product" : "INISAFE CrossWeb EX",
+      "risk" : "medium",
+      "searchTerms" : [
+        "crossweb",
+        "inisafe",
+        "initech"
+      ],
+      "vendor" : "INITECH"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "medium",
+      "id" : "raon.transkey",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "transkey"
+      ],
+      "product" : "TouchEn Transkey",
+      "risk" : "medium",
+      "searchTerms" : [
+        "transkey",
+        "touchen"
+      ],
+      "vendor" : "RaonSecure"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "medium",
+      "id" : "raon.nxfirewall",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "nxfirewall"
+      ],
+      "product" : "TouchEn nxFirewall",
+      "risk" : "high",
+      "searchTerms" : [
+        "nxfirewall",
+        "touchen"
+      ],
+      "vendor" : "RaonSecure"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "medium",
+      "id" : "raon.nxweb",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "nxweb"
+      ],
+      "product" : "TouchEn nxWeb",
+      "risk" : "medium",
+      "searchTerms" : [
+        "nxweb",
+        "touchen"
+      ],
+      "vendor" : "RaonSecure"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "medium",
+      "id" : "raon.keysharpbiz",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "keysharp"
+      ],
+      "product" : "Key# Biz",
+      "risk" : "medium",
+      "searchTerms" : [
+        "keysharp",
+        "keysharpbiz"
+      ],
+      "vendor" : "RaonSecure"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "low",
+      "id" : "anysign.anysign4pc",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "anysign"
+      ],
+      "product" : "AnySign4PC",
+      "risk" : "medium",
+      "searchTerms" : [
+        "anysign",
+        "anysign4pc"
+      ],
+      "vendor" : "AnySign"
+    },
+    {
+      "bundleIds" : [],
+      "confidence" : "low",
+      "id" : "crosscert.crossex",
+      "launchdLabels" : [],
+      "paths" : [],
+      "pkgReceipts" : [
+        "crosscert",
+        "crossex"
+      ],
+      "product" : "CrossCert/CrossEX",
+      "risk" : "medium",
+      "searchTerms" : [
+        "crosscert",
+        "crossex"
+      ],
+      "vendor" : "CrossCert"
+    }
+  ],
+  "version" : "2026.03.18.3"
+}
