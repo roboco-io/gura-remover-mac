@@ -39,6 +39,94 @@ make remove ARGS='--id wizvera.delfino --yes --dry-run'
 
 고위험 항목은 `--force-high-risk`가 필요하고, 시스템 범위 삭제는 보통 `sudo`가 필요합니다.
 
+## 설치
+
+소스에서 직접 빌드하려면 기존처럼 `make build`를 사용할 수 있습니다.
+
+GitHub Release 바이너리로 설치하려면:
+
+1. [Releases](https://github.com/roboco-io/gura-remover-mac/releases)에서 현재 환경에 맞는 `gura-macos-arm64.tar.gz`를 내려받습니다.
+2. 압축을 해제합니다.
+3. 실행 파일을 PATH에 넣습니다.
+
+```bash
+tar -xzf gura-macos-arm64.tar.gz
+chmod +x gura
+sudo mv gura /usr/local/bin/gura
+gura --help
+```
+
+릴리즈에는 무결성 확인용 `gura-macos-arm64.sha256`와 시그니처 번들 `signatures.json`도 함께 포함됩니다.
+
+## gura CLI 사용법
+
+전체 명령 구조 확인:
+
+```bash
+gura --help
+gura help remove
+```
+
+현재 시스템 스캔:
+
+```bash
+gura scan
+gura scan --json
+gura scan --hide-low-confidence
+```
+
+현재 환경 점검:
+
+```bash
+gura doctor
+gura doctor --json
+```
+
+탐지 결과를 읽기 전용으로 다시 확인:
+
+```bash
+gura list
+gura list --json
+```
+
+특정 항목 제거 계획만 먼저 확인:
+
+```bash
+gura remove --id wizvera.delfino --yes --dry-run
+gura remove --id ahnlab.astx --yes --force-high-risk --dry-run
+```
+
+실제 제거:
+
+```bash
+sudo gura remove --id wizvera.delfino --yes
+sudo gura remove --id ahnlab.astx --yes --force-high-risk
+sudo gura remove --all-safe --yes
+```
+
+백업 세션 복구 및 이력 확인:
+
+```bash
+gura history
+gura history --json
+gura restore
+gura restore --session <session-id>
+```
+
+GitHub Release에서 최신 시그니처 번들 갱신:
+
+```bash
+gura signatures update
+gura signatures update --repo roboco-io/gura-remover-mac --asset signatures.json
+```
+
+운영 팁:
+
+- 삭제 전에는 먼저 `--dry-run`으로 계획을 확인합니다.
+- `high risk` 항목은 `--force-high-risk` 없이는 삭제되지 않습니다.
+- 시스템 범위 파일, `launchd`, 시스템 확장 정리에는 `sudo`가 필요할 수 있습니다.
+- 저신뢰 항목 삭제가 필요하면 `--allow-low-confidence`를 명시합니다.
+
 예시:
 
 ```bash
