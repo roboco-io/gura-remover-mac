@@ -86,6 +86,10 @@ public struct LiveProcessRunner: ProcessRunning {
     public init() {}
 
     public func run(_ executable: String, arguments: [String]) throws -> ProcessOutput {
+        final class DataBox: @unchecked Sendable {
+            var data = Data()
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -95,11 +99,28 @@ public struct LiveProcessRunner: ProcessRunning {
         process.standardOutput = stdout
         process.standardError = stderr
 
+        let group = DispatchGroup()
+        let stdoutData = DataBox()
+        let stderrData = DataBox()
+
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            stdoutData.data = stdout.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            stderrData.data = stderr.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
         try process.run()
         process.waitUntilExit()
+        group.wait()
 
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let output = String(data: stdoutData.data, encoding: .utf8) ?? ""
+        let error = String(data: stderrData.data, encoding: .utf8) ?? ""
         return ProcessOutput(status: process.terminationStatus, stdout: output, stderr: error)
     }
 }
@@ -163,4 +184,3 @@ public struct AppEnvironment {
         (path as NSString).expandingTildeInPath
     }
 }
-

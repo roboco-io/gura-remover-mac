@@ -218,6 +218,12 @@ private func render(_ result: RemovalResult) {
     for path in result.deletedPaths {
         print("- \(path)")
     }
+    if !result.operations.isEmpty {
+        print("Operations: \(result.operations.count)")
+        for operation in result.operations {
+            print("- \(operation)")
+        }
+    }
     if !result.warnings.isEmpty {
         print("Warnings:")
         for warning in result.warnings {
@@ -253,12 +259,31 @@ private func render(_ history: [HistoryEntry]) {
 
 private func render(_ report: DoctorReport) {
     print("Root: \(report.isRoot ? "yes" : "no")")
+    print("SIP: \(report.sipEnabled.map { $0 ? "enabled" : "disabled" } ?? "unknown")")
     print("App support: \(report.appSupportPath)")
     print("Signatures: \(report.signatureSource)")
     print("Backups: \(report.backupSessionCount)")
     print("Commands:")
     for key in report.availableCommands.keys.sorted() {
         print("- \(key): \(report.availableCommands[key] == true ? "ok" : "missing")")
+    }
+    if !report.residuals.isEmpty {
+        print("Residuals:")
+        for residual in report.residuals {
+            print("- \(residual.findingID) | \(residual.product)")
+            for service in residual.launchdServices.prefix(3) {
+                print("  • launchd: \(service)")
+            }
+            for process in residual.runningProcesses.prefix(3) {
+                print("  • process: \(process)")
+            }
+            for systemExtension in residual.systemExtensions.prefix(2) {
+                print("  • systemExtension: \(systemExtension)")
+            }
+            for receipt in residual.packageReceipts.prefix(3) {
+                print("  • receipt: \(receipt)")
+            }
+        }
     }
     if !report.warnings.isEmpty {
         print("Warnings:")
@@ -274,4 +299,3 @@ private func render(_ result: SignatureUpdateResult) {
     print("Version: \(result.version)")
     print("Saved to: \(result.downloadedTo)")
 }
-

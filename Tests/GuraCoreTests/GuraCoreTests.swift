@@ -11,6 +11,21 @@ struct StubProcessRunner: ProcessRunning {
     }
 }
 
+final class RecordingProcessRunner: ProcessRunning {
+    var outputs: [String: ProcessOutput]
+    private(set) var invocations: [String] = []
+
+    init(outputs: [String: ProcessOutput]) {
+        self.outputs = outputs
+    }
+
+    func run(_ executable: String, arguments: [String]) throws -> ProcessOutput {
+        let key = ([executable] + arguments).joined(separator: " ")
+        invocations.append(key)
+        return outputs[key] ?? ProcessOutput(status: 0, stdout: "", stderr: "")
+    }
+}
+
 struct GuraCoreTests {
     @Test
     func scanFindsConfiguredArtifacts() throws {
@@ -72,6 +87,29 @@ struct GuraCoreTests {
                     com.nprotect.nprotectOnlineSecurityV1.install.pkg
                     """,
                     stderr: ""
+                ),
+                "/bin/launchctl list": ProcessOutput(
+                    status: 0,
+                    stdout: """
+                    321\t0\tcom.astx.firewall.Agent
+                    654\t0\tcom.nprotect.nosintgdmn
+                    """,
+                    stderr: ""
+                ),
+                "/bin/ps -Ao pid=,command=": ProcessOutput(
+                    status: 0,
+                    stdout: """
+                    321 /Applications/AhnLab/ASTx/astxAgent.app/Contents/MacOS/astxAgent
+                    654 /Applications/nProtect/nProtect Online Security V1/nosintgdmn
+                    """,
+                    stderr: ""
+                ),
+                "/usr/bin/systemextensionsctl list": ProcessOutput(
+                    status: 0,
+                    stdout: """
+                    * R2PBZJ465V com.nprotect.nosfw (1.0/1) nosfw [activated enabled]
+                    """,
+                    stderr: ""
                 )
             ]),
             appSupportURL: temp.appendingPathComponent("State", isDirectory: true),
@@ -91,6 +129,11 @@ struct GuraCoreTests {
 
         #expect(report.findings.contains(where: { $0.id == "ahnlab.astx" }))
         #expect(report.findings.contains(where: { $0.id == "inca.nprotectonlinesecurity" }))
+        let ahnlab = try #require(report.findings.first(where: { $0.id == "ahnlab.astx" }))
+        #expect(ahnlab.artifacts.contains(where: { $0.kind == .launchdService }))
+        #expect(ahnlab.artifacts.contains(where: { $0.kind == .runningProcess }))
+        let nProtect = try #require(report.findings.first(where: { $0.id == "inca.nprotectonlinesecurity" }))
+        #expect(nProtect.artifacts.contains(where: { $0.kind == .systemExtension }))
     }
 
     @Test
@@ -208,5 +251,124 @@ struct GuraCoreTests {
         let restore = try service.restore(sessionID: removal.session.sessionID)
         #expect(restore.restoredPaths.contains(where: { $0.hasSuffix("/Applications/TouchEn nxKey.app") }))
         #expect(FileManager.default.fileExists(atPath: target.path))
+    }
+
+    @Test
+    func removeKillsProcessesForgetsReceiptsAndUninstallsSystemExtensions() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+
+        let applicationsRoot = temp.appendingPathComponent("Applications", isDirectory: true)
+        let launchDaemons = temp.appendingPathComponent("Library/LaunchDaemons", isDirectory: true)
+        let nProtectRoot = applicationsRoot.appendingPathComponent("nProtect/nProtect Online Security V1", isDirectory: true)
+        let plist = launchDaemons.appendingPathComponent("com.nprotect.nosintgdmn.plist")
+
+        try FileManager.default.createDirectory(at: nProtectRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: launchDaemons, withIntermediateDirectories: true)
+        try Data().write(to: plist)
+
+        let runner = RecordingProcessRunner(outputs: [
+            "/usr/sbin/pkgutil --pkgs": ProcessOutput(
+                status: 0,
+                stdout: "com.nprotect.nprotectOnlineSecurityV1.install.pkg\n",
+                stderr: ""
+            ),
+            "/usr/bin/systemextensionsctl list": ProcessOutput(
+                status: 0,
+                stdout: "* R2PBZJ465V com.nprotect.nosfw (1.0/1) nosfw [activated enabled]\n",
+                stderr: ""
+            ),
+            "/bin/launchctl list": ProcessOutput(
+                status: 0,
+                stdout: "654\t0\tcom.nprotect.nosintgdmn\n",
+                stderr: ""
+            ),
+            "/bin/ps -Ao pid=,command=": ProcessOutput(
+                status: 0,
+                stdout: "654 /Applications/nProtect/nProtect Online Security V1/nosintgdmn\n",
+                stderr: ""
+            ),
+        ])
+
+        let env = AppEnvironment(
+            fileManager: .default,
+            processRunner: runner,
+            appSupportURL: temp.appendingPathComponent("State", isDirectory: true),
+            runtimePaths: RuntimePaths(
+                applicationRoots: [applicationsRoot],
+                launchAgentRoots: [launchDaemons],
+                privilegedHelperRoots: [],
+                browserRoots: [],
+                preferenceRoots: [],
+                cacheRoots: [],
+                supportRoots: []
+            )
+        )
+
+        let service = GuraService(environment: env)
+        let removal = try service.remove(
+            options: .init(ids: ["inca.nprotectonlinesecurity"], forceHighRisk: true, assumeYes: true),
+            confirm: { _ in true }
+        )
+
+        #expect(removal.operations.contains("launchctl remove com.nprotect.nosintgdmn"))
+        #expect(removal.operations.contains("kill -TERM 654"))
+        #expect(removal.operations.contains("kill -KILL 654"))
+        #expect(removal.operations.contains("pkgutil --forget com.nprotect.nprotectOnlineSecurityV1.install.pkg"))
+        #expect(removal.operations.contains("systemextensionsctl uninstall R2PBZJ465V com.nprotect.nosfw"))
+        #expect(runner.invocations.contains("/bin/launchctl remove com.nprotect.nosintgdmn"))
+        #expect(runner.invocations.contains("/bin/kill -TERM 654"))
+        #expect(runner.invocations.contains("/bin/kill -KILL 654"))
+        #expect(runner.invocations.contains("/usr/sbin/pkgutil --forget com.nprotect.nprotectOnlineSecurityV1.install.pkg"))
+        #expect(runner.invocations.contains("/usr/bin/systemextensionsctl uninstall R2PBZJ465V com.nprotect.nosfw"))
+    }
+
+    @Test
+    func doctorReportsSipBlockedSystemExtensionResiduals() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+
+        let runner = StubProcessRunner(outputs: [
+            "/usr/sbin/pkgutil --pkgs": ProcessOutput(
+                status: 0,
+                stdout: "com.nprotect.nprotectOnlineSecurityV1.install.pkg\n",
+                stderr: ""
+            ),
+            "/usr/bin/systemextensionsctl list": ProcessOutput(
+                status: 0,
+                stdout: "* R2PBZJ465V com.nprotect.nosfw (1.0/1) nosfw [activated enabled]\n",
+                stderr: ""
+            ),
+            "/bin/launchctl list": ProcessOutput(status: 0, stdout: "", stderr: ""),
+            "/bin/ps -Ao pid=,command=": ProcessOutput(status: 0, stdout: "", stderr: ""),
+            "/usr/bin/csrutil status": ProcessOutput(
+                status: 0,
+                stdout: "System Integrity Protection status: enabled.\n",
+                stderr: ""
+            ),
+        ])
+
+        let env = AppEnvironment(
+            fileManager: .default,
+            processRunner: runner,
+            appSupportURL: temp.appendingPathComponent("State", isDirectory: true),
+            runtimePaths: RuntimePaths(
+                applicationRoots: [],
+                launchAgentRoots: [],
+                privilegedHelperRoots: [],
+                browserRoots: [],
+                preferenceRoots: [],
+                cacheRoots: [],
+                supportRoots: []
+            )
+        )
+
+        let doctor = try GuraService(environment: env).doctor()
+
+        #expect(doctor.sipEnabled == true)
+        #expect(doctor.residuals.contains(where: { $0.findingID == "inca.nprotectonlinesecurity" }))
+        #expect(doctor.warnings.contains(where: { $0.contains("SIP") }))
     }
 }

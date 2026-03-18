@@ -39,8 +39,10 @@ public enum ConfidenceLevel: String, Codable, CaseIterable, Comparable, Sendable
 public enum ArtifactKind: String, Codable, Sendable {
     case appBundle
     case launchdPlist
+    case launchdService
     case packageReceipt
     case privilegedHelper
+    case runningProcess
     case systemExtension
     case browserExtension
     case backgroundTask
@@ -135,6 +137,7 @@ public struct BackupSession: Codable, Sendable {
 public struct RemovalResult: Codable, Sendable {
     public let session: BackupSession
     public let deletedPaths: [String]
+    public let operations: [String]
     public let warnings: [String]
 }
 
@@ -153,11 +156,22 @@ public struct HistoryEntry: Codable, Sendable {
 
 public struct DoctorReport: Codable, Sendable {
     public let isRoot: Bool
+    public let sipEnabled: Bool?
     public let appSupportPath: String
     public let signatureSource: String
     public let availableCommands: [String: Bool]
     public let backupSessionCount: Int
+    public let residuals: [DoctorResidual]
     public let warnings: [String]
+}
+
+public struct DoctorResidual: Codable, Sendable {
+    public let findingID: String
+    public let product: String
+    public let launchdServices: [String]
+    public let runningProcesses: [String]
+    public let systemExtensions: [String]
+    public let packageReceipts: [String]
 }
 
 public struct SignatureUpdateResult: Codable, Sendable {

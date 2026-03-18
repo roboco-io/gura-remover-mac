@@ -64,7 +64,9 @@
       "vendor" : "AhnLab"
     },
     {
-      "bundleIds" : [],
+      "bundleIds" : [
+        "com.nprotect.nosfw"
+      ],
       "confidence" : "high",
       "id" : "inca.nprotectonlinesecurity",
       "launchdLabels" : [

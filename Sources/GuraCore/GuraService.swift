@@ -87,7 +87,9 @@ public final class GuraService {
     }
 
     public func remove(options: RemoveOptions, confirm: (String) -> Bool) throws -> RemovalResult {
-        let report = try scan()
+        let report = try scan(
+            options: .init(includeLowConfidence: !options.ids.isEmpty || options.allowLowConfidence)
+        )
         let selected = try selectFindings(from: report.findings, options: options)
         let plan = buildRemovalPlan(for: selected)
 
@@ -107,7 +109,32 @@ public final class GuraService {
 
         var actions: [BackupAction] = []
         var deletedPaths: [String] = []
-        let warnings = plan.warnings
+        var operations: [String] = []
+        var warnings = plan.warnings
+
+        for label in plan.launchdServices {
+            operations.append("launchctl remove \(label)")
+            guard !options.dryRun else { continue }
+
+            let output = try? environment.processRunner.run("/bin/launchctl", arguments: ["remove", label])
+            if let output, output.status != 0 {
+                let message = output.stderr.isEmpty ? output.stdout : output.stderr
+                warnings.append("launchd 서비스를 제거하지 못했습니다: \(label) (\(message.trimmingCharacters(in: .whitespacesAndNewlines)))")
+            }
+        }
+
+        for pid in plan.processIDs {
+            operations.append("kill -TERM \(pid)")
+            operations.append("kill -KILL \(pid)")
+            guard !options.dryRun else { continue }
+
+            _ = try? environment.processRunner.run("/bin/kill", arguments: ["-TERM", String(pid)])
+            let killOutput = try? environment.processRunner.run("/bin/kill", arguments: ["-KILL", String(pid)])
+            if let killOutput, killOutput.status != 0 {
+                let message = killOutput.stderr.isEmpty ? killOutput.stdout : killOutput.stderr
+                warnings.append("프로세스를 종료하지 못했습니다: \(pid) (\(message.trimmingCharacters(in: .whitespacesAndNewlines)))")
+            }
+        }
 
         for artifact in plan.removableArtifacts {
             guard let artifactPath = artifact.path else {
@@ -129,6 +156,9 @@ public final class GuraService {
                 if artifact.kind == .launchdPlist {
                     _ = try? environment.processRunner.run("/bin/launchctl", arguments: ["bootout", "system", artifactPath])
                     _ = try? environment.processRunner.run("/bin/launchctl", arguments: ["bootout", "gui/\(getuid())", artifactPath])
+                    if !artifact.value.isEmpty {
+                        _ = try? environment.processRunner.run("/bin/launchctl", arguments: ["remove", artifact.value])
+                    }
                 }
 
                 try copyPreservingDirectory(source: originalURL, destination: backupURL)
@@ -137,6 +167,36 @@ public final class GuraService {
 
             actions.append(BackupAction(originalPath: artifactPath, backupPath: backupURL.path))
             deletedPaths.append(artifactPath)
+        }
+
+        for receipt in plan.packageReceipts {
+            operations.append("pkgutil --forget \(receipt)")
+            guard !options.dryRun else { continue }
+
+            let output = try? environment.processRunner.run("/usr/sbin/pkgutil", arguments: ["--forget", receipt])
+            if let output, output.status != 0 {
+                let message = output.stderr.isEmpty ? output.stdout : output.stderr
+                warnings.append("패키지 영수증을 제거하지 못했습니다: \(receipt) (\(message.trimmingCharacters(in: .whitespacesAndNewlines)))")
+            }
+        }
+
+        for systemExtension in plan.systemExtensions {
+            operations.append("systemextensionsctl uninstall \(systemExtension.teamID) \(systemExtension.bundleID)")
+            guard !options.dryRun else { continue }
+
+            let output = try? environment.processRunner.run(
+                "/usr/bin/systemextensionsctl",
+                arguments: ["uninstall", systemExtension.teamID, systemExtension.bundleID]
+            )
+            if let output, output.status != 0 {
+                let message = output.stderr.isEmpty ? output.stdout : output.stderr
+                let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                if normalized.localizedCaseInsensitiveContains("System Integrity Protection is enabled") {
+                    warnings.append("시스템 확장을 제거하지 못했습니다: \(systemExtension.bundleID) (SIP 활성화로 차단됨. recoveryOS에서 SIP를 끄지 않으면 systemextensionsctl uninstall 이 실패할 수 있습니다.)")
+                } else {
+                    warnings.append("시스템 확장을 제거하지 못했습니다: \(systemExtension.bundleID) (\(normalized))")
+                }
+            }
         }
 
         let session = BackupSession(
@@ -150,7 +210,12 @@ public final class GuraService {
         let manifestURL = sessionRoot.appendingPathComponent("manifest.json", isDirectory: false)
         try encoder.encode(session).write(to: manifestURL)
 
-        return RemovalResult(session: session, deletedPaths: deletedPaths.sorted(), warnings: warnings.sorted())
+        return RemovalResult(
+            session: session,
+            deletedPaths: deletedPaths.sorted(),
+            operations: operations.sorted(),
+            warnings: warnings.sorted()
+        )
     }
 
     public func restore(sessionID: String?) throws -> RestoreResult {
@@ -208,7 +273,7 @@ public final class GuraService {
 
     public func doctor() throws -> DoctorReport {
         try environment.ensureDirectories()
-        let commands = ["/bin/launchctl", "/usr/sbin/pkgutil", "/usr/bin/codesign", "/usr/bin/log", "/usr/bin/sfltool", "/usr/bin/systemextensionsctl"]
+        let commands = ["/bin/launchctl", "/usr/sbin/pkgutil", "/usr/bin/codesign", "/usr/bin/log", "/usr/bin/sfltool", "/usr/bin/systemextensionsctl", "/usr/bin/csrutil"]
         let availability = Dictionary(uniqueKeysWithValues: commands.map { path in
             (URL(fileURLWithPath: path).lastPathComponent, environment.fileManager.isExecutableFile(atPath: path))
         })
@@ -216,6 +281,9 @@ public final class GuraService {
         let signatureSource = environment.fileManager.fileExists(atPath: environment.signatureCacheURL.path)
             ? environment.signatureCacheURL.path
             : "bundled:default.json"
+        let sipEnabled = csrutilStatus()
+        let report = try scan()
+        let residuals = report.findings.compactMap(makeDoctorResidual)
 
         var warnings: [String] = []
         if geteuid() != 0 {
@@ -224,13 +292,21 @@ public final class GuraService {
         if availability["systemextensionsctl"] == false {
             warnings.append("systemextensionsctl 을 찾지 못해 시스템 확장 탐지가 제한됩니다.")
         }
+        if sipEnabled == true && residuals.contains(where: { !$0.systemExtensions.isEmpty }) {
+            warnings.append("SIP가 활성화되어 있어 일부 시스템 확장 제거는 차단됩니다. 현재 macOS에서는 recoveryOS에서 SIP를 끄지 않으면 systemextensionsctl uninstall 이 실패할 수 있습니다.")
+        }
+        if residuals.contains(where: { !$0.launchdServices.isEmpty || !$0.runningProcesses.isEmpty }) {
+            warnings.append("일부 항목은 파일 삭제 후에도 launchd 등록 또는 실행 프로세스가 남아 있을 수 있습니다. sudo remove 를 다시 실행하거나 재부팅 후 재확인하세요.")
+        }
 
         return DoctorReport(
             isRoot: geteuid() == 0,
+            sipEnabled: sipEnabled,
             appSupportPath: environment.appSupportURL.path,
             signatureSource: signatureSource,
             availableCommands: availability,
             backupSessionCount: historyCount,
+            residuals: residuals,
             warnings: warnings
         )
     }
@@ -285,6 +361,19 @@ public final class GuraService {
     private struct CommandSnapshot {
         let packageReceipts: [String]
         let systemExtensions: [String]
+        let launchdEntries: [LaunchdEntry]
+        let runningProcesses: [RunningProcess]
+    }
+
+    private struct LaunchdEntry {
+        let label: String
+        let pid: Int?
+    }
+
+    private struct RunningProcess {
+        let pid: Int
+        let executable: String
+        let command: String
     }
 
     private struct FileSnapshotEntry {
@@ -296,6 +385,8 @@ public final class GuraService {
     private func collectCommandSnapshot(warnings: inout [String]) -> CommandSnapshot {
         var packageReceipts: [String] = []
         var systemExtensions: [String] = []
+        var launchdEntries: [LaunchdEntry] = []
+        var runningProcesses: [RunningProcess] = []
 
         do {
             let pkgOutput = try environment.processRunner.run("/usr/sbin/pkgutil", arguments: ["--pkgs"])
@@ -319,7 +410,38 @@ public final class GuraService {
             warnings.append("systemextensionsctl 조회에 실패했습니다: \(error.localizedDescription)")
         }
 
-        return CommandSnapshot(packageReceipts: packageReceipts, systemExtensions: systemExtensions)
+        do {
+            let output = try environment.processRunner.run("/bin/launchctl", arguments: ["list"])
+            if output.status == 0 {
+                launchdEntries = output.stdout
+                    .split(separator: "\n")
+                    .compactMap(parseLaunchdEntry)
+            } else if !output.stderr.isEmpty {
+                warnings.append("launchctl 조회에 실패했습니다: \(output.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            }
+        } catch {
+            warnings.append("launchctl 조회에 실패했습니다: \(error.localizedDescription)")
+        }
+
+        do {
+            let output = try environment.processRunner.run("/bin/ps", arguments: ["-Ao", "pid=,command="])
+            if output.status == 0 {
+                runningProcesses = output.stdout
+                    .split(separator: "\n")
+                    .compactMap(parseRunningProcess)
+            } else if !output.stderr.isEmpty {
+                warnings.append("ps 조회에 실패했습니다: \(output.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            }
+        } catch {
+            warnings.append("ps 조회에 실패했습니다: \(error.localizedDescription)")
+        }
+
+        return CommandSnapshot(
+            packageReceipts: packageReceipts,
+            systemExtensions: systemExtensions,
+            launchdEntries: launchdEntries,
+            runningProcesses: runningProcesses
+        )
     }
 
     private func collectFileSnapshot() -> [FileSnapshotEntry] {
@@ -350,6 +472,8 @@ public final class GuraService {
     ) throws -> [Artifact] {
         var artifacts = Set<Artifact>()
         let exactPaths = signature.paths.map(environment.expand)
+        let loweredExactPaths = exactPaths.map { $0.lowercased() }
+        let loweredBundleIDs = signature.bundleIds.map { $0.lowercased() }
 
         for path in exactPaths where environment.fileManager.fileExists(atPath: path) {
             let kind: ArtifactKind = path.hasSuffix(".plist") ? .launchdPlist : (path.hasSuffix(".app") ? .appBundle : .supportFile)
@@ -374,7 +498,7 @@ public final class GuraService {
 
         for line in commandSnapshot.systemExtensions {
             let lower = line.lowercased()
-            if signature.bundleIds.contains(where: { lower.contains($0.lowercased()) }) ||
+            if loweredBundleIDs.contains(where: { lower.contains($0) }) ||
                 searchTerms.contains(where: { lower.contains($0) }) {
                 artifacts.insert(Artifact(kind: .systemExtension, value: line, path: nil, requiresSudo: true))
             }
@@ -387,6 +511,26 @@ public final class GuraService {
                     artifacts.insert(Artifact(kind: .launchdPlist, value: label, path: entry.url.path, requiresSudo: entry.url.path.hasPrefix("/Library")))
                 }
             }
+            for entry in commandSnapshot.launchdEntries where entry.label.lowercased().contains(lowerLabel) {
+                artifacts.insert(Artifact(kind: .launchdService, value: entry.label, path: nil, requiresSudo: true))
+            }
+        }
+
+        for process in commandSnapshot.runningProcesses {
+            let lowerExecutable = process.executable.lowercased()
+            let matchesPath = loweredExactPaths.contains(where: { lowerExecutable.contains($0) })
+            let matchesBundle = loweredBundleIDs.contains(where: { lowerExecutable.contains($0) })
+            let matchesTerm = searchTerms.contains(where: { lowerExecutable.contains($0) })
+            if matchesPath || matchesBundle || matchesTerm {
+                artifacts.insert(
+                    Artifact(
+                        kind: .runningProcess,
+                        value: "\(process.pid)\t\(process.command)",
+                        path: nil,
+                        requiresSudo: true
+                    )
+                )
+            }
         }
 
         if !warnings.isEmpty {
@@ -394,6 +538,112 @@ public final class GuraService {
         }
 
         return collapseArtifacts(Array(artifacts))
+    }
+
+    private func parseLaunchdEntry(_ line: Substring) -> LaunchdEntry? {
+        let parts = line.split(separator: "\t").map(String.init)
+        guard let label = parts.last, parts.count >= 3 else {
+            return nil
+        }
+
+        let pid = Int(parts[0])
+        return LaunchdEntry(label: label, pid: pid)
+    }
+
+    private func parseRunningProcess(_ line: Substring) -> RunningProcess? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let parts = trimmed.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        guard parts.count == 2, let pid = Int(parts[0]) else {
+            return nil
+        }
+
+        let command = String(parts[1])
+        let executable = command.split(separator: " ").first.map(String.init) ?? command
+        return RunningProcess(pid: pid, executable: executable, command: command)
+    }
+
+    private func processID(from artifact: Artifact) -> Int? {
+        guard artifact.kind == .runningProcess else {
+            return nil
+        }
+
+        let parts = artifact.value.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        guard let first = parts.first else {
+            return nil
+        }
+        return Int(first)
+    }
+
+    private func parseSystemExtensionReference(from artifact: Artifact) -> SystemExtensionReference? {
+        guard artifact.kind == .systemExtension else {
+            return nil
+        }
+
+        let tokens = artifact.value
+            .split(whereSeparator: \.isWhitespace)
+            .filter { $0 != "*" }
+            .map(String.init)
+        guard tokens.count >= 2 else {
+            return nil
+        }
+
+        return SystemExtensionReference(teamID: tokens[0], bundleID: tokens[1], rawValue: artifact.value)
+    }
+
+    private func csrutilStatus() -> Bool? {
+        guard environment.fileManager.isExecutableFile(atPath: "/usr/bin/csrutil") else {
+            return nil
+        }
+
+        do {
+            let output = try environment.processRunner.run("/usr/bin/csrutil", arguments: ["status"])
+            let statusText = [output.stdout, output.stderr].joined(separator: "\n").lowercased()
+            if statusText.contains("enabled") {
+                return true
+            }
+            if statusText.contains("disabled") {
+                return false
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func makeDoctorResidual(from finding: Finding) -> DoctorResidual? {
+        let launchdServices = finding.artifacts
+            .filter { $0.kind == .launchdService }
+            .map(\.value)
+            .sorted()
+        let runningProcesses = finding.artifacts
+            .filter { $0.kind == .runningProcess }
+            .map(\.value)
+            .sorted()
+        let systemExtensions = finding.artifacts
+            .filter { $0.kind == .systemExtension }
+            .map(\.value)
+            .sorted()
+        let packageReceipts = finding.artifacts
+            .filter { $0.kind == .packageReceipt }
+            .map(\.value)
+            .sorted()
+
+        guard !launchdServices.isEmpty || !runningProcesses.isEmpty || !systemExtensions.isEmpty || !packageReceipts.isEmpty else {
+            return nil
+        }
+
+        return DoctorResidual(
+            findingID: finding.id,
+            product: finding.product,
+            launchdServices: launchdServices,
+            runningProcesses: runningProcesses,
+            systemExtensions: systemExtensions,
+            packageReceipts: packageReceipts
+        )
     }
 
     private func classify(path: String, under root: URL) -> ArtifactKind {
@@ -493,7 +743,17 @@ public final class GuraService {
 
     private struct RemovalPlan {
         let removableArtifacts: [Artifact]
+        let launchdServices: [String]
+        let processIDs: [Int]
+        let packageReceipts: [String]
+        let systemExtensions: [SystemExtensionReference]
         let warnings: [String]
+    }
+
+    private struct SystemExtensionReference: Hashable {
+        let teamID: String
+        let bundleID: String
+        let rawValue: String
     }
 
     private func buildRemovalPlan(for findings: [Finding]) -> RemovalPlan {
@@ -515,26 +775,64 @@ public final class GuraService {
                 return (lhs.path ?? "") < (rhs.path ?? "")
             }
 
+        let launchdServices = collapsed
+            .filter { $0.kind == .launchdService }
+            .map(\.value)
+            .sorted()
+
+        let processIDs = collapsed
+            .filter { $0.kind == .runningProcess }
+            .compactMap(processID(from:))
+            .sorted()
+
+        let packageReceipts = collapsed
+            .filter { $0.kind == .packageReceipt }
+            .map(\.value)
+            .sorted()
+
+        let systemExtensions = Set(
+            collapsed
+                .filter { $0.kind == .systemExtension }
+                .compactMap(parseSystemExtensionReference(from:))
+        )
+        .sorted { lhs, rhs in
+            if lhs.teamID != rhs.teamID {
+                return lhs.teamID < rhs.teamID
+            }
+            return lhs.bundleID < rhs.bundleID
+        }
+
         let warnings = collapsed.compactMap { artifact -> String? in
             guard artifact.path == nil else { return nil }
             switch artifact.kind {
-            case .packageReceipt:
-                return "패키지 영수증은 자동 삭제하지 않았습니다: \(artifact.value)"
-            case .systemExtension:
-                return "시스템 확장은 자동 삭제하지 않았습니다: \(artifact.value)"
             case .backgroundTask:
                 return "백그라운드 태스크는 자동 삭제하지 않았습니다: \(artifact.value)"
+            case .systemExtension:
+                return parseSystemExtensionReference(from: artifact) == nil
+                    ? "시스템 확장을 해석하지 못해 자동 삭제에서 제외했습니다: \(artifact.value)"
+                    : nil
+            case .launchdService, .packageReceipt, .runningProcess:
+                return nil
             default:
                 return "경로가 없는 \(artifact.kind.rawValue) 아티팩트는 자동 삭제하지 않았습니다: \(artifact.value)"
             }
         }
 
-        return RemovalPlan(removableArtifacts: removable, warnings: warnings.sorted())
+        return RemovalPlan(
+            removableArtifacts: removable,
+            launchdServices: launchdServices,
+            processIDs: processIDs,
+            packageReceipts: packageReceipts,
+            systemExtensions: systemExtensions,
+            warnings: warnings.sorted()
+        )
     }
 
     private func removalPriority(for kind: ArtifactKind) -> Int {
         switch kind {
         case .launchdPlist:
+            return 0
+        case .launchdService:
             return 0
         case .privilegedHelper:
             return 1
@@ -542,7 +840,7 @@ public final class GuraService {
             return 2
         case .preference, .cache, .browserExtension:
             return 3
-        case .packageReceipt, .systemExtension, .backgroundTask:
+        case .packageReceipt, .runningProcess, .systemExtension, .backgroundTask:
             return 4
         }
     }
