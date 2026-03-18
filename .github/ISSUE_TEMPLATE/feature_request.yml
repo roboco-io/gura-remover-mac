@@ -1,0 +1,43 @@
+name: Feature Request
+description: 새 기능, 탐지 시그니처, 운영 개선 아이디어를 제안합니다.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        무엇을 바꾸고 싶은지보다, 어떤 문제를 해결하려는지부터 적어 주시면 우선순위를 판단하기 쉽습니다.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 해결하려는 문제
+      description: 현재 어떤 점이 불편하거나 부족한가요?
+      placeholder: |
+        특정 벤더 흔적이 scan에 잡히지 않습니다.
+        remove 후에도 시스템 확장이 남아서 후속 안내가 더 필요합니다.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 변경
+      description: 원하는 동작이나 인터페이스를 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 예상 영향 범위
+      description: scan, doctor, remove, restore, signatures, README 등 영향이 예상되는 영역이 있으면 적어 주세요.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 고려한 대안
+      description: 다른 우회 방법이나 수동 절차가 있으면 적어 주세요.
+  - type: textarea
+    id: context
+    attributes:
+      label: 추가 맥락
+      description: 관련 벤더명, 설치 경로 패턴, 운영 사례, 참고 링크 등을 남겨 주세요.
+

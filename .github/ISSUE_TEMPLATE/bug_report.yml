@@ -1,0 +1,81 @@
+name: Bug Report
+description: 오작동, 오탐, 삭제 실패, 복구 실패를 제보합니다.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        재현 가능한 정보 위주로 작성해 주세요. 민감한 경로, 계정명, 금융/공공 사이트 정보는 필요한 범위만 남기고 마스킹해 주세요.
+  - type: dropdown
+    id: category
+    attributes:
+      label: 문제 유형
+      description: 가장 가까운 유형을 선택해 주세요.
+      options:
+        - scan/list 결과 이상
+        - doctor 진단 이상
+        - remove 동작 실패
+        - restore 복구 실패
+        - signatures update 실패
+        - 기타
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS 버전
+      placeholder: "예: macOS 14.7.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: CPU 아키텍처
+      options:
+        - arm64 (Apple Silicon)
+        - x86_64 (Intel)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: gura 버전 또는 릴리즈 태그
+      placeholder: "예: v0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: 실행한 명령
+      description: 가능한 한 그대로 붙여 주세요.
+      placeholder: |
+        gura scan --json
+        sudo gura remove --id ahnlab.astx --yes --force-high-risk --dry-run
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 결과
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 관련 출력 또는 로그
+      description: 민감 정보는 마스킹 후 첨부해 주세요.
+      render: shell
+  - type: textarea
+    id: notes
+    attributes:
+      label: 추가 메모
+      description: 재현 조건, 설치된 보안 모듈 이름, 수동 정리 필요 여부 등을 적어 주세요.
+
